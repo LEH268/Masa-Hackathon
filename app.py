@@ -495,7 +495,7 @@ with tab1:
             template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(15,23,42,0.6)",
-            margin=dict(t=70, b=50, l=60, r=20)
+            margin=dict(t=120, b=50, l=60, r=20)
         )
         st.plotly_chart(fig_trend, use_container_width=True)
 
