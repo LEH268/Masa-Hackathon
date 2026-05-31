@@ -487,15 +487,24 @@ with tab1:
         ))
 
         fig_trend.update_layout(
-            title="Total GHG Emissions: Historical Trend & 2030 Projections",
+            title=dict(
+                text="Total GHG Emissions: Historical Trend & 2030 Projections",
+                x=0.5
+            ),
             xaxis_title="Year",
             yaxis_title="Mt CO₂e",
-            legend=dict(orientation="h", yanchor="bottom", y=1.15, xanchor="left"),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.18,
+                xanchor="center",
+                x=0.5
+            ),
             height=420,
             template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(15,23,42,0.6)",
-            margin=dict(t=120, b=50, l=60, r=20)
+            margin=dict(t=130, b=50, l=60, r=20)
         )
         st.plotly_chart(fig_trend, use_container_width=True)
 
