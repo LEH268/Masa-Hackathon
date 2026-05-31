@@ -490,7 +490,7 @@ with tab1:
             title="Total GHG Emissions: Historical Trend & 2030 Projections",
             xaxis_title="Year",
             yaxis_title="Mt CO₂e",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.15, xanchor="left"),
             height=420,
             template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
