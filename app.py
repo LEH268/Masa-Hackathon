@@ -5,7 +5,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_squared_error
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -26,20 +27,17 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Main font & background */
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'DM Sans', sans-serif;
     }
 
-    /* Hide default Streamlit header padding */
     .block-container {
         padding-top: 1.5rem;
         padding-bottom: 2rem;
     }
 
-    /* Metric cards */
     [data-testid="metric-container"] {
         background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
         border: 1px solid rgba(255,255,255,0.08);
@@ -62,7 +60,6 @@ st.markdown("""
         color: #86efac !important;
     }
 
-    /* Section headers */
     .section-header {
         font-size: 1.05rem;
         font-weight: 600;
@@ -74,7 +71,6 @@ st.markdown("""
         padding-bottom: 0.4rem;
     }
 
-    /* Risk badge */
     .risk-badge {
         display: inline-block;
         padding: 0.35rem 1.1rem;
@@ -87,7 +83,6 @@ st.markdown("""
     .risk-MEDIUM { background:#fef9c3; color:#854d0e; }
     .risk-LOW    { background:#dcfce7; color:#166534; }
 
-    /* Sidebar */
     [data-testid="stSidebar"] {
         background: #0f172a;
     }
@@ -95,7 +90,6 @@ st.markdown("""
         color: #e2e8f0 !important;
     }
 
-    /* Info box */
     .info-box {
         background: rgba(125,211,252,0.07);
         border-left: 3px solid #38bdf8;
@@ -106,7 +100,6 @@ st.markdown("""
         margin: 0.6rem 0 1rem;
     }
 
-    /* Tab styling */
     button[data-baseweb="tab"] {
         font-size: 0.88rem !important;
         font-weight: 500 !important;
@@ -154,52 +147,62 @@ df_t = pd.DataFrame(RAW, index=YEARS)
 df_t.index.name = "Year"
 df_t.index = df_t.index.astype(int)
 
-# Model data (drop rows with any NaN in required columns)
+# ====================================================
+# MODEL TRAINING  (mirrors PredictiveModel.py — Model 4)
+# Features: GDP, Forest_Area, Renewable_Energy_Consumption
+# (Urban_Population excluded — matches selected Model 4)
+# train_test_split: 80/20, random_state=42
+# ====================================================
+
 MODEL_COLS = ["GDP", "Forest_Area", "Renewable_Energy_Consumption", "Total_GHG_Emissions"]
 df_model = df_t[MODEL_COLS].dropna()
 
-# ====================================================
-# MODEL TRAINING
-# ====================================================
-
 X = df_model[["GDP", "Forest_Area", "Renewable_Energy_Consumption"]]
 y = df_model["Total_GHG_Emissions"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
 model = LinearRegression()
-model.fit(X, y)
-y_pred_train = model.predict(X)
-r2 = r2_score(y, y_pred_train)
+model.fit(X_train, y_train)
+
+y_pred_test  = model.predict(X_test)
+y_pred_train = model.predict(X_train)
+
+r2   = r2_score(y_test, y_pred_test)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
 
 # ====================================================
-# DEFAULT VALUES
+# CAGR CALCULATION  (mirrors PredictiveModel.py)
 # ====================================================
 
-latest_gdp       = float(df_t.loc[2024, "GDP"])
-default_forest   = 27.23
-default_renewable = 14.81
-default_urban    = float(df_t.loc[2024, "Urban_Population"])
+def calculate_dynamic_cagr(series, start_yr=2000):
+    """Return (cagr_multiplier, last_valid_year) for a pd.Series indexed by int year."""
+    valid = series.dropna()
+    end_yr   = int(valid.index[-1])
+    v_start  = valid.loc[start_yr]
+    v_end    = valid.loc[end_yr]
+    n        = end_yr - start_yr
+    rate     = (v_end / v_start) ** (1 / n)
+    return rate, end_yr
+
+gdp_rate,      gdp_last_yr      = calculate_dynamic_cagr(df_t["GDP"])
+forest_rate,   forest_last_yr   = calculate_dynamic_cagr(df_t["Forest_Area"])
+renewable_rate, renewable_last_yr = calculate_dynamic_cagr(df_t["Renewable_Energy_Consumption"])
 
 # ====================================================
-# HEADER
+# 2024 FEATURE VALUES  (mirrors PredictiveModel.py)
+# GDP: actual recorded 2024 value
+# Forest & Renewable: CAGR-extrapolated from last valid year
 # ====================================================
 
-col_h1, col_h2 = st.columns([3, 1])
-with col_h1:
-    st.markdown("# 🌍 Climate Risk Assessment Dashboard")
-    st.markdown(
-        "<p style='color:#94a3b8; font-size:0.95rem; margin-top:-0.4rem;'>"
-        "MASA Hackathon 2026 · Team DEBUG · Sunway University</p>",
-        unsafe_allow_html=True
-    )
-with col_h2:
-    st.markdown(
-        "<div style='text-align:right; padding-top:0.6rem;'>"
-        "<span style='background:#1e293b; border:1px solid #334155; "
-        "border-radius:8px; padding:0.4rem 0.8rem; font-size:0.8rem; color:#7dd3fc;'>"
-        "Malaysia · 2000–2024</span></div>",
-        unsafe_allow_html=True
-    )
+latest_gdp    = float(df_t.loc[2024, "GDP"])
+forest_2024   = df_t.loc[forest_last_yr,   "Forest_Area"]              * (forest_rate   ** (2024 - forest_last_yr))
+renewable_2024= df_t.loc[renewable_last_yr, "Renewable_Energy_Consumption"] * (renewable_rate ** (2024 - renewable_last_yr))
 
-st.divider()
+# Sidebar defaults
+default_urban = float(df_t.loc[2024, "Urban_Population"])
 
 # ====================================================
 # SIDEBAR INPUT
@@ -225,7 +228,7 @@ with st.sidebar:
     forest = st.slider(
         "Forest Area (% of land area)",
         min_value=20.0, max_value=40.0,
-        value=default_forest, step=0.1,
+        value=round(forest_2024, 2), step=0.1,
         help="Share of total land area covered by forest"
     )
     urban = st.slider(
@@ -237,7 +240,7 @@ with st.sidebar:
     renewable = st.slider(
         "Renewable Energy (%)",
         min_value=5.0, max_value=60.0,
-        value=default_renewable, step=0.5,
+        value=round(renewable_2024, 2), step=0.5,
         help="Renewable energy as % of total final energy consumption"
     )
 
@@ -272,30 +275,73 @@ else:
     risk_color = "#ef4444"
     risk_icon  = "🔴"
 
-# Historical last known emission
 last_known_emission = df_t["Total_GHG_Emissions"].dropna().iloc[-1]
 delta_vs_last = prediction - last_known_emission
 
-# Baseline 2030 projection (linear extrapolation from model)
-years_proj  = np.array([2024, 2025, 2026, 2027, 2028, 2029, 2030])
-gdp_proj    = np.linspace(latest_gdp, latest_gdp * 1.15, len(years_proj))
-forest_proj = np.linspace(default_forest, default_forest * 1.01, len(years_proj))
-renew_base  = np.linspace(default_renewable, default_renewable * 1.05, len(years_proj))
-renew_stress= np.linspace(default_renewable, default_renewable * 1.30, len(years_proj))
+# ====================================================
+# 2030 PROJECTIONS  (mirrors PredictiveModel.py — CAGR-based)
+# Baseline: apply historical CAGR to each feature
+# Stress:   renewable_rate + 0.03 (matching .py script definition)
+# ====================================================
 
-baseline_proj = [
-    model.predict(pd.DataFrame([[g, f, r]], columns=["GDP","Forest_Area","Renewable_Energy_Consumption"]))[0]
-    for g, f, r in zip(gdp_proj, forest_proj, renew_base)
-]
-stress_proj = [
-    model.predict(pd.DataFrame([[g, f, r]], columns=["GDP","Forest_Area","Renewable_Energy_Consumption"]))[0]
-    for g, f, r in zip(gdp_proj, forest_proj, renew_stress)
-]
+gdp_2030       = latest_gdp    * (gdp_rate      ** 6)
+forest_2030    = forest_2024   * (forest_rate   ** 6)
+renewable_2030 = renewable_2024 * (renewable_rate ** 6)
 
-baseline_2030 = baseline_proj[-1]
-stress_2030   = stress_proj[-1]
+stress_renewable_rate = renewable_rate + 0.03
+renewable_stress_2030 = renewable_2024 * (stress_renewable_rate ** 6)
+
+X_2030 = pd.DataFrame(
+    [[gdp_2030, forest_2030, renewable_2030]],
+    columns=["GDP", "Forest_Area", "Renewable_Energy_Consumption"]
+)
+X_stress = pd.DataFrame(
+    [[gdp_2030, forest_2030, renewable_stress_2030]],
+    columns=["GDP", "Forest_Area", "Renewable_Energy_Consumption"]
+)
+
+baseline_2030 = model.predict(X_2030)[0]
+stress_2030   = model.predict(X_stress)[0]
 reduction     = baseline_2030 - stress_2030
-pct_reduction = reduction / baseline_2030 * 100
+pct_reduction = (reduction / baseline_2030) * 100
+
+# Intermediate yearly projections for chart (2024–2030, CAGR interpolated)
+years_proj = np.array([2024, 2025, 2026, 2027, 2028, 2029, 2030])
+
+def project_year(yr, r_renew):
+    n = yr - 2024
+    g = latest_gdp    * (gdp_rate    ** n)
+    f = forest_2024   * (forest_rate ** n)
+    r = renewable_2024 * (r_renew     ** n)
+    return model.predict(
+        pd.DataFrame([[g, f, r]], columns=["GDP", "Forest_Area", "Renewable_Energy_Consumption"])
+    )[0]
+
+baseline_proj = [project_year(yr, renewable_rate)       for yr in years_proj]
+stress_proj   = [project_year(yr, stress_renewable_rate) for yr in years_proj]
+
+# ====================================================
+# HEADER
+# ====================================================
+
+col_h1, col_h2 = st.columns([3, 1])
+with col_h1:
+    st.markdown("# 🌍 Climate Risk Assessment Dashboard")
+    st.markdown(
+        "<p style='color:#94a3b8; font-size:0.95rem; margin-top:-0.4rem;'>"
+        "MASA Hackathon 2026 · Team DEBUG · Sunway University</p>",
+        unsafe_allow_html=True
+    )
+with col_h2:
+    st.markdown(
+        "<div style='text-align:right; padding-top:0.6rem;'>"
+        "<span style='background:#1e293b; border:1px solid #334155; "
+        "border-radius:8px; padding:0.4rem 0.8rem; font-size:0.8rem; color:#7dd3fc;'>"
+        "Malaysia · 2000–2024</span></div>",
+        unsafe_allow_html=True
+    )
+
+st.divider()
 
 # ====================================================
 # TOP KPI CARDS
@@ -315,7 +361,7 @@ with k2:
     st.metric(
         "Climate Risk Level",
         f"{risk_icon} {risk}",
-        delta=f"R² = {r2:.3f}",
+        delta=f"R² = {r2:.3f} (test set)",
     )
 with k3:
     st.metric(
@@ -431,9 +477,11 @@ with tab1:
         hist_years  = list(df_t["Total_GHG_Emissions"].dropna().index)
         hist_values = df_t["Total_GHG_Emissions"].dropna().values.tolist()
 
+        # Fitted values on full training+test set for display
+        y_pred_all = model.predict(X)
+
         fig_trend = go.Figure()
 
-        # Historical
         fig_trend.add_trace(go.Scatter(
             x=hist_years, y=hist_values,
             mode="lines+markers",
@@ -443,37 +491,33 @@ with tab1:
             hovertemplate="%{x}: %{y:,.0f} Mt CO₂e<extra></extra>"
         ))
 
-        # Fitted
         fitted_years = list(df_model.index)
         fig_trend.add_trace(go.Scatter(
-            x=fitted_years, y=y_pred_train.tolist(),
+            x=fitted_years, y=y_pred_all.tolist(),
             mode="lines",
-            name=f"Model Fit (R²={r2:.3f})",
+            name=f"Model Fit (Test R²={r2:.3f})",
             line=dict(color="#a78bfa", width=1.8, dash="dot"),
             hovertemplate="%{x}: %{y:,.0f} Mt CO₂e<extra></extra>"
         ))
 
-        # Baseline projection
         fig_trend.add_trace(go.Scatter(
             x=list(years_proj), y=baseline_proj,
             mode="lines+markers",
-            name="Baseline 2030",
+            name="Baseline 2030 (CAGR)",
             line=dict(color="#fb923c", width=2, dash="dash"),
             marker=dict(size=5, symbol="diamond"),
             hovertemplate="%{x}: %{y:,.0f} Mt CO₂e<extra></extra>"
         ))
 
-        # Stress scenario
         fig_trend.add_trace(go.Scatter(
             x=list(years_proj), y=stress_proj,
             mode="lines+markers",
-            name="Stress Scenario (↑30% renewables)",
+            name="Stress Scenario (renewable CAGR +3%)",
             line=dict(color="#4ade80", width=2, dash="dash"),
             marker=dict(size=5, symbol="diamond"),
             hovertemplate="%{x}: %{y:,.0f} Mt CO₂e<extra></extra>"
         ))
 
-        # Confidence band
         band_upper = [v * 1.06 for v in baseline_proj]
         band_lower = [v * 0.94 for v in baseline_proj]
         fig_trend.add_trace(go.Scatter(
@@ -524,13 +568,14 @@ with tab1:
         })
         st.dataframe(coef_df, hide_index=True, use_container_width=True)
         st.markdown(
-            f"<div class='info-box'>Model R² = <strong>{r2:.4f}</strong> — "
-            f"{r2*100:.1f}% of emission variance explained by GDP, "
-            "forest area, and renewable energy.</div>",
+            f"<div class='info-box'>"
+            f"Test R² = <strong>{r2:.4f}</strong> · RMSE = <strong>{rmse:,.1f} Mt</strong><br>"
+            f"Model: GDP, Forest Area, Renewable Energy<br>"
+            f"(Urban Population excluded — Model 4)<br>"
+            f"Train/test split: 80/20, random_state=42</div>",
             unsafe_allow_html=True
         )
 
-        # Renewable energy indicator trend
         renew_vals = df_t["Renewable_Energy_Consumption"].dropna()
         fig_re = go.Figure(go.Scatter(
             x=list(renew_vals.index), y=list(renew_vals.values),
@@ -608,7 +653,6 @@ with tab2:
 - Rising urbanisation concentrates risk in cities, increasing insured asset exposure.
 """)
 
-        # Scatter: renewables vs GHG
         fig_sc = px.scatter(
             corr_data, x="Renewable_Energy_Consumption", y="Total_GHG_Emissions",
             trendline="ols",
@@ -637,7 +681,6 @@ Malaysia and the Philippines represent contrasting climate risk profiles within 
 </div>
 """, unsafe_allow_html=True)
 
-    # ----- Disaster data -----
     malaysia_data = {
         "Type":   ["Flood", "Earthquake", "Wildfire", "Drought",
                    "Storm", "Mass movement (wet)", "Mass movement (dry)", "Epidemic"],
@@ -659,7 +702,6 @@ Malaysia and the Philippines represent contrasting climate risk profiles within 
     df_my = pd.DataFrame(malaysia_data)
     df_ph = pd.DataFrame(philippines_data)
 
-    # CO₂ per capita comparison
     co2_years = list(range(2000, 2025))
     malaysia_co2 = [
         5.1, 5.3, 5.4, 5.7, 6.0, 6.2, 6.5, 6.8, 6.6, 6.5,
@@ -672,7 +714,6 @@ Malaysia and the Philippines represent contrasting climate risk profiles within 
         0.9, 1.0, 1.1, 1.1, 1.1
     ]
 
-    # CO₂ per capita chart
     fig_co2 = go.Figure()
     fig_co2.add_trace(go.Scatter(
         x=co2_years, y=malaysia_co2,
@@ -726,7 +767,6 @@ Malaysia and the Philippines represent contrasting climate risk profiles within 
         )
         st.plotly_chart(fig_rs, use_container_width=True)
 
-    # Disaster breakdown side by side
     col_d1, col_d2 = st.columns(2)
 
     with col_d1:
@@ -777,7 +817,6 @@ Malaysia and the Philippines represent contrasting climate risk profiles within 
 - 2013 Typhoon Haiyan was single largest loss event (~10M+ 000 USD)
 """)
 
-    # Implication for reinsurers
     st.divider()
     col_imp1, col_imp2, col_imp3 = st.columns(3)
     with col_imp1:
@@ -799,8 +838,8 @@ Urbanisation data from World Bank / UN Population Division (2026).
 """, unsafe_allow_html=True)
 
     tree_years = list(range(2015, 2025))
-    malaysia_tree = [450, 570, 480, 440, 400, 268, 278, 248, 310, 279]
-    philippines_tree = [63, 128, 111, 68, 62, 48, 84, 38, 56, 56]  # approx from chart
+    malaysia_tree    = [450, 570, 480, 440, 400, 268, 278, 248, 310, 279]
+    philippines_tree = [63, 128, 111, 68, 62, 48, 84, 38, 56, 56]
 
     col_t1, col_t2 = st.columns([2, 1])
 
@@ -829,10 +868,9 @@ Urbanisation data from World Bank / UN Population Division (2026).
         st.plotly_chart(fig_tree, use_container_width=True)
 
     with col_t2:
-        # Urbanisation bar race — use Malaysia 2024 vs 2000
         urb_years = [2000, 2005, 2010, 2015, 2020, 2024]
-        my_urb   = [41.6, 47.0, 52.0, 57.7, 62.4, 64.4]
-        ph_urb   = [46.1, 49.5, 51.5, 53.4, 55.5, 57.0]
+        my_urb    = [41.6, 47.0, 52.0, 57.7, 62.4, 64.4]
+        ph_urb    = [46.1, 49.5, 51.5, 53.4, 55.5, 57.0]
 
         fig_urb = go.Figure()
         fig_urb.add_trace(go.Bar(
@@ -858,7 +896,6 @@ Urbanisation data from World Bank / UN Population Division (2026).
     col_t3, col_t4 = st.columns(2)
 
     with col_t3:
-        # Forest area trend
         forest_s = df_t["Forest_Area"].dropna()
         fig_fa = go.Figure(go.Scatter(
             x=list(forest_s.index), y=list(forest_s.values),
@@ -882,8 +919,8 @@ Urbanisation data from World Bank / UN Population Division (2026).
 Malaysia's forest area has **increased** from 26.0% to 27.2% (2000–2022),
 driven by afforestation policies and secondary regrowth.
 
-Yet tree **cover loss** remains high — peaking at 570,000 ha in 2016 — 
-reflecting selective logging and plantation expansion rather than 
+Yet tree **cover loss** remains high — peaking at 570,000 ha in 2016 —
+reflecting selective logging and plantation expansion rather than
 wholesale clearance. Loss has trended downward since 2016.
 
 **Insurance Implications:**
@@ -917,6 +954,7 @@ with col_f2:
 with col_f3:
     st.markdown(
         "**Model**\n\n"
-        f"Linear Regression · R² = {r2:.4f}\n\n"
-        "Features: GDP, Forest Area, Renewable Energy"
+        f"Linear Regression (Model 4) · Test R² = {r2:.4f} · RMSE = {rmse:,.1f} Mt\n\n"
+        "Features: GDP, Forest Area, Renewable Energy\n\n"
+        "Train/test split: 80/20, random_state=42"
     )
