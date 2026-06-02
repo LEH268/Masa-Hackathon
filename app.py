@@ -178,13 +178,14 @@ rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
 # ====================================================
 
 def calculate_dynamic_cagr(series, start_yr=2000):
-    """Return (cagr_multiplier, last_valid_year) for a pd.Series indexed by int year."""
-    valid = series.dropna()
-    end_yr   = int(valid.index[-1])
-    v_start  = valid.loc[start_yr]
-    v_end    = valid.loc[end_yr]
-    n        = end_yr - start_yr
-    rate     = (v_end / v_start) ** (1 / n)
+    """Return (cagr_multiplier, last_valid_year) — mirrors PredictiveModel.py exactly.
+    Uses iloc[0] for start value and last valid index as end year."""
+    valid   = series.dropna()
+    end_yr  = int(valid.index[-1])
+    v_start = valid.iloc[0]          # first valid value (year 2000)
+    v_end   = valid.iloc[-1]         # last valid value
+    n       = end_yr - start_yr
+    rate    = (v_end / v_start) ** (1 / n)
     return rate, end_yr
 
 gdp_rate,      gdp_last_yr      = calculate_dynamic_cagr(df_t["GDP"])
