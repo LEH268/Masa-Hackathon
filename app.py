@@ -623,7 +623,7 @@ with tab2:
             hovertemplate="%{y} × %{x}: %{z:.3f}<extra></extra>"
         ))
         fig_hm.update_layout(
-            title="Correlation Matrix (2000–2022)",
+            title="Correlation Matrix (2000–2020)",
             height=420, template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(15,23,42,0.6)",
